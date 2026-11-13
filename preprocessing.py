@@ -14,6 +14,26 @@ METADATA_COLUMNS = [
 ]
 
 
+def prepare_text(df):
+    # Work on a copy and replace missing text with empty strings.
+    df = df.copy()
+    columns = TEXT_COLUMNS
+    missing = df[columns].isna()
+    print("Missing values before filling:")
+    print(missing.sum())
+
+    df[columns] = df[columns].fillna("")
+
+    # Check that missing values became empty strings, not nan or None text.
+    for column in columns:
+        assert (df.loc[missing[column], column] == "").all()
+
+    # Join the five fields for each job posting, using spaces between fields.
+    df["text"] = df[columns].agg(" ".join, axis=1)
+    assert df["text"].notna().all()
+    return df
+
+
 def clean_html_text(value):
     # Turn one value into plain text with no HTML tags or extra spaces.
     # If the value is missing, return an empty string.
@@ -73,3 +93,9 @@ def drop_empty_jobs(jobs):
     # For ads with no text, keep only the job ID and the real or fake label.
     dropped = jobs.loc[empty, ["job_id", "fraudulent"]].copy()
     return kept, dropped
+
+
+if __name__ == "__main__":
+    df = pd.read_csv("data/fake_job_postings.csv")
+    df = prepare_text(df)
+    print(df[["title", "text"]].head())

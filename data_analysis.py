@@ -6,6 +6,26 @@ import pandas as pd
 from preprocessing import preprocess_jobs, drop_empty_jobs, add_text_features
 
 
+def analyze_class_balance(df):
+    # Count legitimate (0) and fraudulent (1) job postings.
+    counts = df["fraudulent"].value_counts().reindex([0, 1], fill_value=0)
+    percentages = counts / len(df) * 100
+    summary = pd.DataFrame({"Count": counts, "Percent": percentages.round(2)})
+    print(summary)
+
+    plt.figure(figsize=(7, 4))
+    plt.bar(["Legitimate (0)", "Fraudulent (1)"], counts)
+    plt.title("Job Posting Class Balance")
+    plt.ylabel("Number of Job Postings")
+    plt.tight_layout()
+    plt.show()
+
+    # Accuracy can be misleading when one class is much larger.
+    print(f"Always predicting legitimate gives {percentages[0]:.2f}% accuracy.")
+    print("But it detects no fraud. Also evaluate fraud precision, recall and F1.")
+    return summary
+
+
 def check_duplicates(jobs):
     # Find job posting with the same details. Ignore their IDs and whether they
     # are marked as real (0) or fake (1) when checking for matches.
@@ -109,6 +129,8 @@ def main():
     csv_path = Path(__file__).parent / "data" / "fake_job_postings.csv"
     jobs = pd.read_csv(csv_path)
 
+    analyze_class_balance(jobs)
+
     summary, duplicate_rows_to_delete, conflicting_groups = check_duplicates(jobs)
     print(summary)
     print(f"Duplicate rows to delete: {duplicate_rows_to_delete}")
@@ -119,11 +141,10 @@ def main():
     with_features = add_text_features(cleaned)
     kept, dropped = drop_empty_jobs(with_features)
 
-    plot_text_length(kept)
     print(f"\nEmpty postings removed: {len(dropped)}")
-    print(plot_text_length(cleaned))
+    print(plot_text_length(kept))
 
-    short = get_short_jobs(cleaned)
+    short = get_short_jobs(kept)
     print(f"\nPostings with 1–30 words: {len(short)}")
     print(short.head(10).to_string(index=False))
 
