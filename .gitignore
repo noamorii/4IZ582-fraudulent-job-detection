@@ -221,3 +221,4 @@ __marimo__/
 
 # Generated analysis outputs
 outputs/
+.DS_Store

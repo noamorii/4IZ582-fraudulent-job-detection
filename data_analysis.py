@@ -125,6 +125,46 @@ def get_short_jobs(jobs, max_words=30):
     return short.sort_values("word_count")
 
 
+def plot_missing_values(jobs):
+    # 1. Count how many rows are empty (NaN) in each column and calculate the percentage.
+    missing_counts = jobs.isna().sum()
+    missing_pct = (jobs.isna().mean() * 100).round(2)
+
+    # 2. Also calculate missing percentages separately for Real (0) and Fake (1) jobs.
+    by_class = (jobs.isna().groupby(jobs["fraudulent"]).mean().T * 100).round(2)
+    by_class.columns = ["Real_Missing_%", "Fake_Missing_%"]
+
+    # 3. Combine into a summary table, keep only columns with missing values, and sort.
+    summary = pd.DataFrame({
+        "Missing_Count": missing_counts,
+        "Missing_%": missing_pct,
+        "Real_Missing_%": by_class["Real_Missing_%"],
+        "Fake_Missing_%": by_class["Fake_Missing_%"],
+    })
+    summary = summary[summary["Missing_Count"] > 0].sort_values(
+        "Missing_%", ascending=True
+    )
+
+    # 4. Plot a horizontal bar chart of the share of missing values by field.
+    fig, ax = plt.subplots(figsize=(9, 5))
+    bars = ax.barh(summary.index, summary["Missing_%"], color="#3b7dd8")
+    ax.bar_label(
+        bars,
+        labels=[f"{pct:.1f}%" for pct in summary["Missing_%"]],
+        padding=3,
+    )
+    ax.set(
+        title="Share of Missing Values by Field",
+        xlabel="Missing Values (%)",
+        ylabel="Field",
+        xlim=(0, 95),
+    )
+    fig.tight_layout()
+
+    # Return table sorted from highest to lowest for printing in the terminal
+    return summary.sort_values("Missing_%", ascending=False)
+
+
 def main():
     csv_path = Path(__file__).parent / "data" / "fake_job_postings.csv"
     jobs = pd.read_csv(csv_path)
@@ -147,6 +187,9 @@ def main():
     short = get_short_jobs(kept)
     print(f"\nPostings with 1–30 words: {len(short)}")
     print(short.head(10).to_string(index=False))
+
+    print("\nMissing values by column:")
+    print(plot_missing_values(jobs))
 
     plt.show()
 
