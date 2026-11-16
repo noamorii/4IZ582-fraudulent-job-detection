@@ -198,16 +198,3 @@ def prepare_splits(jobs, n_splits=5, random_state=42):
     print("Leakage check passed: 0 overlapping texts or related groups across splits.")
 
     return train_df, test_df, cv_splits
-
-
-if __name__ == "__main__":
-    df = pd.read_csv("data/fake_job_postings.csv")
-    df = prepare_text(df)
-    print(df[["title", "text"]].head())
-
-    # Run cleaning, feature extraction, deduplication, and train/test/CV splitting
-    cleaned = preprocess_jobs(df)
-    with_features = add_text_features(cleaned)
-    kept, dropped = drop_empty_jobs(with_features)
-    train_df, test_df, cv_splits = prepare_splits(kept, n_splits=5, random_state=42)
-    print(f"Train size: {len(train_df)} | Test size: {len(test_df)} | CV folds: {len(cv_splits)}")
