@@ -6,12 +6,12 @@ from pathlib import Path
 
 import pandas as pd
 
-from embedding_export import save_cache, metadata_signature
-from embeddings import get_embeddings_and_stats
+from embeddings import get_embeddings, metadata_hash, save_embedding_dataset
 from preprocessing import preprocess_jobs, add_text_features, drop_empty_jobs, prepare_splits
 
 
-def prepare_data(csv_path="data/fake_job_postings.csv", n_splits=5):
+def prepare_metadata(csv_path="data/fake_job_postings.csv", n_splits=5):
+    """Clean postings and return their metadata with shared train/test/CV assignments."""
     jobs = pd.read_csv(csv_path)
     if jobs.job_id.isna().any() or jobs.job_id.duplicated().any():
         raise ValueError("job_id must be unique and non-missing")
@@ -20,33 +20,34 @@ def prepare_data(csv_path="data/fake_job_postings.csv", n_splits=5):
     cleaned = add_text_features(preprocess_jobs(jobs))
     kept, dropped = drop_empty_jobs(cleaned)
     print(f"Empty postings removed: {len(dropped)}")
-    train_df, test_df, cv = prepare_splits(kept, n_splits=n_splits, random_state=42)
+    train_df, test_df, cv_splits = prepare_splits(kept, n_splits=n_splits, random_state=42)
     train_df, test_df = train_df.copy(), test_df.copy()
     train_df["split"], test_df["split"] = "train", "test"
     train_df["cv_fold"], test_df["cv_fold"] = -1, -1
-    for fold, (_, valid) in enumerate(cv):
-        train_df.loc[valid, "cv_fold"] = fold
+    for fold, (_, validation_indices) in enumerate(cv_splits):
+        train_df.loc[validation_indices, "cv_fold"] = fold
     metadata = pd.concat([train_df, test_df], ignore_index=True)
     metadata["text_hash"] = metadata.text.map(lambda t: hashlib.sha256(t.encode("utf-8")).hexdigest())
     columns = ["job_id", "fraudulent", "text", "text_hash", "group_id", "split", "cv_fold"]
-    return metadata[columns], cv
+    return metadata[columns], cv_splits
 
 
-def build_cache(csv_path="data/fake_job_postings.csv", output_dir="data/school_embeddings",
-                batch_size=64, offline=True):
-    metadata, cv = prepare_data(csv_path)
-    output = Path(output_dir)
-    vectors, info = get_embeddings_and_stats(
-        metadata.text.tolist(), output / "requests", batch_size=batch_size,
+def create_embedding_dataset(
+    csv_path="data/fake_job_postings.csv",
+    output_folder="data/school_embeddings",
+    batch_size=64,
+    offline=True,
+):
+    """Prepare postings, obtain embeddings and save the complete training dataset."""
+    metadata, cv_splits = prepare_metadata(csv_path)
+    output_folder = Path(output_folder)
+    vectors, stats = get_embeddings(
+        metadata.text.tolist(), output_folder / "requests", batch_size=batch_size,
         offline=offline,
     )
-    manifest = save_cache(
-        output, vectors, metadata, source=f"school/{info['embedding_model']}", is_mock=False,
-        embedding_seconds=info["embedding_seconds"], endpoint_requests=info["endpoint_requests"],
-        extra={k: v for k, v in info.items() if k not in {"embedding_seconds", "endpoint_requests"}},
-    )
-    print(f"Saved {vectors.shape} embeddings; new HTTP attempts: {info['new_endpoint_requests']}")
-    return vectors, metadata, manifest, cv
+    manifest = save_embedding_dataset(vectors, metadata, stats, output_folder)
+    print(f"Saved {vectors.shape} embeddings; new HTTP attempts: {stats['new_endpoint_requests']}")
+    return vectors, metadata, manifest, cv_splits
 
 
 def main():
@@ -58,14 +59,14 @@ def main():
     args = parser.parse_args()
     # A finished CSV cache is sufficient offline; JSON batch files need not be shipped.
     if not args.generate and (args.output / "manifest.json").exists():
-        from model_comparison import load_cache
-        vectors, metadata, manifest, _, cv = load_cache(args.output)
-        expected, _ = prepare_data(args.csv)
-        if metadata_signature(metadata) != metadata_signature(expected):
+        from model_comparison import load_embedding_dataset
+        vectors, metadata, manifest, _, cv_splits = load_embedding_dataset(args.output)
+        expected_metadata, _ = prepare_metadata(args.csv)
+        if metadata_hash(metadata) != metadata_hash(expected_metadata):
             raise ValueError("Saved metadata differs from the current data/splits; regenerate the cache")
-        print(f"Offline: {vectors.shape}; source={manifest['source']}; CV folds={len(cv)}")
+        print(f"Offline: {vectors.shape}; source={manifest['source']}; CV folds={len(cv_splits)}")
     else:
-        build_cache(args.csv, args.output, args.batch_size, offline=not args.generate)
+        create_embedding_dataset(args.csv, args.output, args.batch_size, offline=not args.generate)
 
 
 if __name__ == "__main__":

@@ -98,16 +98,21 @@ def drop_empty_jobs(jobs):
     return kept, dropped
 
 
+def duplicate_feature_columns(jobs):
+    """Original features used to identify duplicate postings in EDA and preprocessing."""
+    excluded = {
+        "job_id", "fraudulent", "text", "word_count", "filled_fields", "group_id"
+    }
+    return [column for column in jobs.columns if column not in excluded]
+
+
 def handle_duplicates_and_conflicts(jobs, subset=None):
-    # Consistently handle duplicate postings and conflicting fraud labels (0 vs 1).
+    """Remove duplicate feature rows and entire groups with conflicting labels."""
     df = jobs.copy()
     if subset is None:
-        excluded = {
-            "job_id", "fraudulent", "text", "word_count", "filled_fields", "group_id"
-        }
-        subset = [col for col in df.columns if col not in excluded]
+        subset = duplicate_feature_columns(df)
 
-    # 1. Find duplicate groups where identical features have conflicting labels (both 0 and 1).
+    # The target is not part of the duplicate key; it only identifies label conflicts.
     label_counts = df.groupby(subset, dropna=False)["fraudulent"].transform("nunique")
     conflicting_mask = label_counts > 1
     conflicts_removed = int(conflicting_mask.sum())
@@ -115,7 +120,7 @@ def handle_duplicates_and_conflicts(jobs, subset=None):
     # Remove conflicting rows first so noisy labels do not corrupt training or testing.
     df_clean = df.loc[~conflicting_mask].copy()
 
-    # 2. Drop exact duplicate postings across the feature columns, keeping the first one.
+    # Keep one row only when all compared original features match.
     deduplicated = df_clean.drop_duplicates(subset=subset, keep="first").copy()
     duplicates_removed = len(df_clean) - len(deduplicated)
 
@@ -139,31 +144,16 @@ def assign_posting_groups(jobs):
 
 
 def verify_no_split_leakage(train_df, test_df, cv_splits):
-    # Check that there is zero overlap of job_ids, related groups, or identical texts
-    # between train and test sets, and across all cross-validation folds.
-    assert set(train_df["job_id"]).isdisjoint(set(test_df["job_id"])), (
-        "Leakage error: job_id overlap between train and test!"
-    )
-    assert set(train_df["group_id"]).isdisjoint(set(test_df["group_id"])), (
-        "Leakage error: related postings (group_id) overlap between train and test!"
-    )
-    assert set(train_df["text"]).isdisjoint(set(test_df["text"])), (
-        "Leakage error: identical text overlap between train and test!"
-    )
+    """Shared check for newly prepared data and datasets loaded from CSV."""
+    def check_overlap(left, right, split_name):
+        for column in ("job_id", "group_id", "text"):
+            if not set(left[column]).isdisjoint(right[column]):
+                raise ValueError(f"Leakage: {column} overlap {split_name}")
 
-    for fold_num, (tr_idx, val_idx) in enumerate(cv_splits, start=1):
-        fold_train = train_df.iloc[tr_idx]
-        fold_val = train_df.iloc[val_idx]
-
-        assert set(fold_train["job_id"]).isdisjoint(set(fold_val["job_id"])), (
-            f"Fold {fold_num} leakage: job_id overlap!"
-        )
-        assert set(fold_train["group_id"]).isdisjoint(set(fold_val["group_id"])), (
-            f"Fold {fold_num} leakage: related postings (group_id) overlap!"
-        )
-        assert set(fold_train["text"]).isdisjoint(set(fold_val["text"])), (
-            f"Fold {fold_num} leakage: identical text overlap!"
-        )
+    check_overlap(train_df, test_df, "train/test")
+    for fold, (train_indices, validation_indices) in enumerate(cv_splits, start=1):
+        check_overlap(train_df.iloc[train_indices], train_df.iloc[validation_indices],
+                      f"CV fold {fold}")
 
 
 def prepare_splits(jobs, n_splits=5, random_state=42):

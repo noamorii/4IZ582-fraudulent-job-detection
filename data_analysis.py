@@ -3,7 +3,10 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from preprocessing import preprocess_jobs, drop_empty_jobs, add_text_features
+from preprocessing import (
+    preprocess_jobs, drop_empty_jobs, add_text_features, handle_duplicates_and_conflicts,
+    duplicate_feature_columns,
+)
 
 
 def analyze_class_balance(df):
@@ -27,9 +30,8 @@ def analyze_class_balance(df):
 
 
 def check_duplicates(jobs):
-    # Find job posting with the same details. Ignore their IDs and whether they
-    # are marked as real (0) or fake (1) when checking for matches.
-    columns = jobs.columns.drop(["job_id", "fraudulent"]).tolist()
+    # Use the same original feature columns as preprocessing.
+    columns = duplicate_feature_columns(jobs)
     repeated = jobs.duplicated(subset=columns, keep=False)
 
     summary = (
@@ -169,22 +171,23 @@ def main():
     csv_path = Path(__file__).parent / "data" / "fake_job_postings.csv"
     jobs = pd.read_csv(csv_path)
 
-    analyze_class_balance(jobs)
-
-    summary, duplicate_rows_to_delete, conflicting_groups = check_duplicates(jobs)
-    print(summary)
-    print(f"Duplicate rows to delete: {duplicate_rows_to_delete}")
-    print(f"Duplicate groups with conflicting labels: {conflicting_groups}")
-    plot_job_features(jobs)
-
     cleaned = preprocess_jobs(jobs)
     with_features = add_text_features(cleaned)
     kept, dropped = drop_empty_jobs(with_features)
 
-    print(f"\nEmpty postings removed: {len(dropped)}")
-    print(plot_text_length(kept))
+    summary, duplicate_rows, conflicting_groups = check_duplicates(kept)
+    print(summary)
+    print(f"Duplicate postings beyond the first: {duplicate_rows}")
+    print(f"Duplicate posting groups with conflicting labels: {conflicting_groups}")
+    deduplicated, duplicates_removed, conflicts_removed = handle_duplicates_and_conflicts(kept)
+    print(f"Duplicates removed: {duplicates_removed} | Conflicting rows removed: {conflicts_removed}")
 
-    short = get_short_jobs(kept)
+    analyze_class_balance(deduplicated)
+    plot_job_features(deduplicated)
+    print(f"\nEmpty postings removed: {len(dropped)}")
+    print(plot_text_length(deduplicated))
+
+    short = get_short_jobs(deduplicated)
     print(f"\nPostings with 1–30 words: {len(short)}")
     print(short.head(10).to_string(index=False))
 
