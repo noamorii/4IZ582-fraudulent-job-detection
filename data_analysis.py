@@ -127,43 +127,43 @@ def get_short_jobs(jobs, max_words=30):
     return short.sort_values("word_count")
 
 
+def missing_value_mask(jobs):
+    return jobs.replace(r"^\s*$", pd.NA, regex=True).isna()
+
+
 def plot_missing_values(jobs):
-    # 1. Count how many rows are empty (NaN) in each column and calculate the percentage.
-    missing_counts = jobs.isna().sum()
-    missing_pct = (jobs.isna().mean() * 100).round(2)
+    missing = missing_value_mask(jobs)
+    missing_counts = missing.sum()
+    missing_pct = (missing.mean() * 100).round(2)
 
-    # 2. Also calculate missing percentages separately for Real (0) and Fake (1) jobs.
-    by_class = (jobs.isna().groupby(jobs["fraudulent"]).mean().T * 100).round(2)
-    by_class.columns = ["Real_Missing_%", "Fake_Missing_%"]
-
-    # 3. Combine into a summary table, keep only columns with missing values, and sort.
+    by_class = missing.groupby(jobs["fraudulent"], observed=True).mean().T
+    by_class = (by_class.reindex(columns=[0, 1]) * 100).round(2)
     summary = pd.DataFrame({
         "Missing_Count": missing_counts,
         "Missing_%": missing_pct,
-        "Real_Missing_%": by_class["Real_Missing_%"],
-        "Fake_Missing_%": by_class["Fake_Missing_%"],
+        "Real_Missing_%": by_class[0],
+        "Fake_Missing_%": by_class[1],
     })
     summary = summary[summary["Missing_Count"] > 0].sort_values(
         "Missing_%", ascending=True
     )
 
-    # 4. Plot a horizontal bar chart of the share of missing values by field.
     fig, ax = plt.subplots(figsize=(9, 5))
     bars = ax.barh(summary.index, summary["Missing_%"], color="#3b7dd8")
     ax.bar_label(
         bars,
-        labels=[f"{pct:.1f}%" for pct in summary["Missing_%"]],
+        fmt="%.2f%%",
         padding=3,
     )
     ax.set(
         title="Share of Missing Values by Field",
         xlabel="Missing Values (%)",
         ylabel="Field",
-        xlim=(0, 95),
+        xlim=(0, 110),
     )
+    ax.set_xticks(range(0, 101, 20))
     fig.tight_layout()
 
-    # Return table sorted from highest to lowest for printing in the terminal
     return summary.sort_values("Missing_%", ascending=False)
 
 
