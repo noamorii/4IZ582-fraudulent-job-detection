@@ -111,7 +111,7 @@ def evaluate_test(models, test_df):
     return pd.DataFrame(rows), predictions
 
 
-def plot_confusion_matrix(actual, predicted, model_name):
+def plot_confusion_matrix(actual, predicted, model_name, save_path=None, show=True):
     # Rows are actual classes; columns are predicted classes.
     # With labels=[0, 1], the cells are [[TN, FP], [FN, TP]].
     matrix = confusion_matrix(actual, predicted, labels=[0, 1])
@@ -128,16 +128,23 @@ def plot_confusion_matrix(actual, predicted, model_name):
     ax.set_xlabel("Predicted class")
     ax.set_ylabel("Actual class")
     fig.tight_layout()
-    plt.show()
+    if save_path is not None:
+        fig.savefig(save_path, dpi=150, bbox_inches="tight")
+    if show:
+        plt.show()
     return matrix
 
 
-def plot_test_results(predictions):
+def plot_test_results(predictions, save_dir=None):
     # Draw charts from saved predictions, without fitting or evaluating models.
-    for item in predictions:
+    for number, item in enumerate(predictions, start=1):
+        save_path = None
+        if save_dir is not None:
+            save_path = save_dir / f"tfidf_test_confusion_{number}.png"
         plot_confusion_matrix(
             item["actual"], item["predicted"],
             f'{item["name"]} (threshold={item["threshold"]:.4f})',
+            save_path=save_path, show=False,
         )
     roc_fig, roc_ax = plt.subplots(figsize=(6, 5))
     pr_fig, pr_ax = plt.subplots(figsize=(6, 5))
@@ -151,9 +158,13 @@ def plot_test_results(predictions):
     roc_ax.plot([0, 1], [0, 1], "k--", label="Random ranking")
     roc_ax.set_title("Test ROC curves")
     roc_ax.legend()
-    pr_ax.axhline(item["actual"].mean(), color="gray", linestyle="--", label="Fraud prevalence")
+    prevalence = predictions[0]["actual"].mean()
+    pr_ax.axhline(prevalence, color="gray", linestyle="--", label="Fraud prevalence")
     pr_ax.set_title("Test Precision–Recall curves")
     pr_ax.legend()
     roc_fig.tight_layout()
     pr_fig.tight_layout()
+    if save_dir is not None:
+        roc_fig.savefig(save_dir / "tfidf_test_roc.png", dpi=150, bbox_inches="tight")
+        pr_fig.savefig(save_dir / "tfidf_test_precision_recall.png", dpi=150, bbox_inches="tight")
     plt.show()
