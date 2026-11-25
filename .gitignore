@@ -226,3 +226,4 @@ outputs/
 data/baseline_training.joblib
 data/random_forest_training.joblib
 data/embeddings_logistic_training.joblib
+data/tfidf_test_results.joblib
