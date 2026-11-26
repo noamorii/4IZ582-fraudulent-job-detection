@@ -3,10 +3,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from preprocessing import (
-    preprocess_jobs, drop_empty_jobs, add_text_features, handle_duplicates_and_conflicts,
-    duplicate_feature_columns,
-)
+from preprocessing import preprocess_jobs, drop_empty_jobs, add_text_features
 
 
 def analyze_class_balance(df):
@@ -30,8 +27,9 @@ def analyze_class_balance(df):
 
 
 def check_duplicates(jobs):
-    # Use the same original feature columns as preprocessing.
-    columns = duplicate_feature_columns(jobs)
+    # Find job posting with the same details. Ignore their IDs and whether they
+    # are marked as real (0) or fake (1) when checking for matches.
+    columns = jobs.columns.drop(["job_id", "fraudulent"]).tolist()
     repeated = jobs.duplicated(subset=columns, keep=False)
 
     summary = (
@@ -128,43 +126,43 @@ def get_short_jobs(jobs, max_words=30):
     return short.sort_values("word_count")
 
 
-def missing_value_mask(jobs):
-    return jobs.replace(r"^\s*$", pd.NA, regex=True).isna()
-
-
 def plot_missing_values(jobs):
-    missing = missing_value_mask(jobs)
-    missing_counts = missing.sum()
-    missing_pct = (missing.mean() * 100).round(2)
+    # 1. Count how many rows are empty (NaN) in each column and calculate the percentage.
+    missing_counts = jobs.isna().sum()
+    missing_pct = (jobs.isna().mean() * 100).round(2)
 
-    by_class = missing.groupby(jobs["fraudulent"], observed=True).mean().T
-    by_class = (by_class.reindex(columns=[0, 1]) * 100).round(2)
+    # 2. Also calculate missing percentages separately for Real (0) and Fake (1) jobs.
+    by_class = (jobs.isna().groupby(jobs["fraudulent"]).mean().T * 100).round(2)
+    by_class.columns = ["Real_Missing_%", "Fake_Missing_%"]
+
+    # 3. Combine into a summary table, keep only columns with missing values, and sort.
     summary = pd.DataFrame({
         "Missing_Count": missing_counts,
         "Missing_%": missing_pct,
-        "Real_Missing_%": by_class[0],
-        "Fake_Missing_%": by_class[1],
+        "Real_Missing_%": by_class["Real_Missing_%"],
+        "Fake_Missing_%": by_class["Fake_Missing_%"],
     })
     summary = summary[summary["Missing_Count"] > 0].sort_values(
         "Missing_%", ascending=True
     )
 
+    # 4. Plot a horizontal bar chart of the share of missing values by field.
     fig, ax = plt.subplots(figsize=(9, 5))
     bars = ax.barh(summary.index, summary["Missing_%"], color="#3b7dd8")
     ax.bar_label(
         bars,
-        fmt="%.2f%%",
+        labels=[f"{pct:.1f}%" for pct in summary["Missing_%"]],
         padding=3,
     )
     ax.set(
         title="Share of Missing Values by Field",
         xlabel="Missing Values (%)",
         ylabel="Field",
-        xlim=(0, 110),
+        xlim=(0, 95),
     )
-    ax.set_xticks(range(0, 101, 20))
     fig.tight_layout()
 
+    # Return table sorted from highest to lowest for printing in the terminal
     return summary.sort_values("Missing_%", ascending=False)
 
 
@@ -172,23 +170,22 @@ def main():
     csv_path = Path(__file__).parent / "data" / "fake_job_postings.csv"
     jobs = pd.read_csv(csv_path)
 
+    analyze_class_balance(jobs)
+
+    summary, duplicate_rows_to_delete, conflicting_groups = check_duplicates(jobs)
+    print(summary)
+    print(f"Duplicate rows to delete: {duplicate_rows_to_delete}")
+    print(f"Duplicate groups with conflicting labels: {conflicting_groups}")
+    plot_job_features(jobs)
+
     cleaned = preprocess_jobs(jobs)
     with_features = add_text_features(cleaned)
     kept, dropped = drop_empty_jobs(with_features)
 
-    summary, duplicate_rows, conflicting_groups = check_duplicates(kept)
-    print(summary)
-    print(f"Duplicate postings beyond the first: {duplicate_rows}")
-    print(f"Duplicate posting groups with conflicting labels: {conflicting_groups}")
-    deduplicated, duplicates_removed, conflicts_removed = handle_duplicates_and_conflicts(kept)
-    print(f"Duplicates removed: {duplicates_removed} | Conflicting rows removed: {conflicts_removed}")
-
-    analyze_class_balance(deduplicated)
-    plot_job_features(deduplicated)
     print(f"\nEmpty postings removed: {len(dropped)}")
-    print(plot_text_length(deduplicated))
+    print(plot_text_length(kept))
 
-    short = get_short_jobs(deduplicated)
+    short = get_short_jobs(kept)
     print(f"\nPostings with 1–30 words: {len(short)}")
     print(short.head(10).to_string(index=False))
 
