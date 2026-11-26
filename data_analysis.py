@@ -89,9 +89,10 @@ def fraud_bars(jobs, feature, ax, title):
 def plot_job_features(jobs):
     # Show by graph how many job postings are real or fake in each group
     # Based on the company logo, remote work, and job type.
-    fig, axes = plt.subplots(1, 2, figsize=(9, 4), sharey=True)
+    fig, axes = plt.subplots(1, 3, figsize=(9, 4), sharey=True)
     fraud_bars(jobs, "has_company_logo", axes[0], "Company logo")
     fraud_bars(jobs, "telecommuting", axes[1], "Remote-work flag")
+    fraud_bars(jobs, "has_questions", axes[2], "Screening Questions")
     fig.tight_layout()
 
     fig, ax = plt.subplots(figsize=(10, 4))
