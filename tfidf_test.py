@@ -31,25 +31,29 @@ if __name__ == "__main__":
         # 3. Load the trained models and thresholds selected on train.
         baseline = joblib.load(data_dir / "baseline_training.joblib")
         forest = joblib.load(data_dir / "random_forest_training.joblib")
+        logistic = baseline["logistic_result"]
+        for result in [baseline["dummy_result"], logistic, forest]:
+            assert result["train_ids"] == train_df["job_id"].tolist()
         models = {
-            "Dummy": (baseline["dummy_search"], 0.5),
+            "Dummy": (baseline["dummy_result"]["model"], 0.5),
             "TF-IDF + Logistic Regression": (
-                baseline["tfidf_search"], baseline["threshold"],
+                logistic["model"], logistic["threshold"],
             ),
             "TF-IDF + Random Forest": (
-                forest["rf_search"], forest["threshold"],
+                forest["model"], forest["threshold"],
             ),
         }
 
         # 4. Evaluate once. Do not fit models or choose thresholds on test.
         results, predictions = evaluate_test(models, test_df)
         saved = {
+            "cv_method": "nested",
             "results": results,
             "predictions": predictions,
             "test_ids": test_df["job_id"].tolist(),
             "best_parameters": {
-                "Logistic Regression": baseline["tfidf_search"].best_params_,
-                "Random Forest": forest["rf_search"].best_params_,
+                "Logistic Regression": logistic["best_params"],
+                "Random Forest": forest["best_params"],
             },
         }
         # Save before opening any plot windows.
