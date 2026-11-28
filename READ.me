@@ -1,5 +1,5 @@
 -- Data and exploratory analysis
-Настя
+Nastya
 1 Анализирует баланс классов. Строит график реальных и мошеннических вакансий, объясняет недостатки accuracy при дисбалансе.
  Бар чарт
 Юля
@@ -19,7 +19,7 @@ Julia
 
 -- Построение моделей и подбор параметров
 Nastya
-1. Строит DummyClassifier и TF-IDF → Logistic Regression. Подбирает параметры TF-IDF и классификатора через кросс-валидацию.
+1. Строит DummyClassifier, TF-IDF → Logistic Regression и TF-IDF → Random Forest. Подбирает параметры TF-IDF и классификаторов через кросс-валидацию. Для Random Forest (TF-IDF: max_features=20000, min_df=2; 100 деревьев, class_weight="balanced_subsample") подбираются ngram_range, max_depth и min_samples_leaf.
 Julia
 2. Получает embeddings через школьный endpoint. Сохраняет векторы и метаданные. Строит Embeddings → Logistic Regression, подбирает параметры классификатора.
 Olesia
